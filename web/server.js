@@ -39,6 +39,22 @@ app.use(cors({
   credentials: true
 }));
 
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Music Detector API Server is running',
+    endpoints: {
+      health: '/health',
+      upload: '/upload',
+      audio: '/audio',
+      'upload-audio': '/upload-audio',
+      files: '/files'
+    },
+    timestamp: new Date().toISOString() 
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running', timestamp: new Date().toISOString() });
@@ -99,6 +115,45 @@ app.post('/audio', upload.single('audio'), (req, res) => {
   } catch (error) {
     console.error('Audio upload error:', error);
     res.status(500).json({ error: 'Audio upload failed' });
+  }
+});
+
+// Audio analysis endpoint
+app.post('/upload-audio', upload.single('audio'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file uploaded for analysis' });
+    }
+
+    console.log('Audio analysis request:', {
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+
+    // Simulate audio analysis (placeholder for actual music detection logic)
+    const analysisResult = {
+      filename: req.file.originalname,
+      fileSize: req.file.size,
+      duration: Math.floor(req.file.size / 1024), // Placeholder duration calculation
+      format: req.file.mimetype,
+      analysis: {
+        detected: Math.random() > 0.5, // Random detection for demo
+        confidence: (Math.random() * 100).toFixed(2) + '%',
+        timestamp: new Date().toISOString(),
+        notes: 'This is a placeholder analysis. Connect to actual music detection service for real results.'
+      }
+    };
+
+    res.json({ 
+      message: 'Audio analysis completed',
+      result: analysisResult
+    });
+
+  } catch (error) {
+    console.error('Audio analysis error:', error);
+    res.status(500).json({ error: 'Audio analysis failed' });
   }
 });
 

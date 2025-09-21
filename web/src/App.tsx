@@ -7,6 +7,8 @@ function App() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [serviceUrl, setServiceUrl] = useState('http://localhost:10814');
   const [connectionStatus, setConnectionStatus] = useState('Not connected');
+  const [uploadResult, setUploadResult] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -26,6 +28,7 @@ function App() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
+    setIsLoading(true);
 
     try {
       const response = await fetch(`${serviceUrl}/upload`, {
@@ -34,13 +37,20 @@ function App() {
       });
 
       if (response.ok) {
+        const result = await response.json();
+        setUploadResult(result);
         alert('File uploaded successfully');
       } else {
-        alert('File upload failed');
+        const error = await response.json();
+        setUploadResult({ error: error.error || 'Upload failed' });
+        alert('File upload failed: ' + (error.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Upload error:', error);
+      setUploadResult({ error: 'Network error' });
       alert('Error uploading file');
+    } finally {
+      setIsLoading(false);
     }
   };
 
