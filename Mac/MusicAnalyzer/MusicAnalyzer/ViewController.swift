@@ -167,11 +167,15 @@ class ViewController: NSViewController {
     // MARK: - UI Updates
     private func updateUI(with result: MusicAnalysisResult) {
         DispatchQueue.main.async {
-            // 更新调式信息
+            // 更新调式信息 - 更快响应
             if let key = result.key {
                 let keyString = noteNames[key.root] + key.mode.rawValue
                 self.keyLabel.stringValue = "调式: \(keyString)"
-                self.confidenceProgressView.doubleValue = Double(key.confidence)
+                self.confidenceProgressView.doubleValue = Double(key.confidence * 100)
+            } else if self.musicAnalysisEngine.getEssentiaStats().available {
+                // 如果Essentia可用但没有实时结果，显示提示
+                self.keyLabel.stringValue = "调式: 实时检测中..."
+                self.confidenceProgressView.doubleValue = 20.0
             } else {
                 self.keyLabel.stringValue = "调式: 检测中..."
                 self.confidenceProgressView.doubleValue = 0.0
@@ -187,17 +191,13 @@ class ViewController: NSViewController {
                 self.romanNumeralLabel.stringValue = "级数: --"
             }
             
-            // 更新节拍信息
+            // 更新节拍信息 - 始终显示当前BPM估计
             let beat = result.beat
-            if beat.bpm > 0 {
-                self.bpmLabel.stringValue = "BPM: \(Int(beat.bpm))"
-            } else {
-                self.bpmLabel.stringValue = "BPM: 检测中..."
-            }
+            self.bpmLabel.stringValue = "BPM: \(Int(beat.bpm))"
             self.timeSignatureLabel.stringValue = "拍号: \(beat.timeSignature.description)"
             self.measurePositionLabel.stringValue = "拍子: \(beat.measurePosition)/\(beat.timeSignature.numerator)"
             
-            // 更新和弦进行
+            // 更新和弦进行 - 更频繁更新
             self.updateChordProgression(result.chordProgression)
         }
     }
@@ -266,13 +266,21 @@ class ViewController: NSViewController {
         DispatchQueue.main.async {
             self.keyLabel.stringValue = "调式: Essentia 分析中..."
             self.bpmLabel.stringValue = "BPM: Essentia 分析中..."
+            self.chordLabel.stringValue = "和弦: --"
+            self.romanNumeralLabel.stringValue = "级数: --"
+            self.confidenceProgressView.doubleValue = 30.0  // 显示进行中状态
         }
         
         do {
             let result = try await EssentiaAPIClient.shared.analyzeAudio(fileURL: fileURL)
             
+            // 立即更新UI，不要等待弹窗
             DispatchQueue.main.async {
-                self.displayEssentiaResult(result, fileName: fileURL.lastPathComponent)
+                self.updateUIWithEssentiaResult(result, fileName: fileURL.lastPathComponent)
+                // 延迟显示详细结果弹窗
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.displayEssentiaResultDetails(result, fileName: fileURL.lastPathComponent)
+                }
             }
         } catch {
             print("❌ Essentia 分析失败: \(error)")
@@ -283,18 +291,41 @@ class ViewController: NSViewController {
                 // 恢复原始状态
                 self.keyLabel.stringValue = "调式: 检测中..."
                 self.bpmLabel.stringValue = "BPM: 检测中..."
+                self.confidenceProgressView.doubleValue = 0.0
             }
         }
     }
     
-    private func displayEssentiaResult(_ result: EssentiaAnalysisResult, fileName: String) {
-        // 更新主要 UI 元素
+    /// 立即更新UI显示Essentia分析结果
+    private func updateUIWithEssentiaResult(_ result: EssentiaAnalysisResult, fileName: String) {
+        // 更新主要 UI 元素 - 立即显示结果
         bpmLabel.stringValue = "BPM: \(String(format: "%.1f", result.rhythmAnalysis.bpm)) (Essentia)"
         keyLabel.stringValue = "调性: \(result.keyAnalysis.key) \(result.keyAnalysis.scale) (Essentia)"
         
         // 设置置信度进度条
-        confidenceProgressView.doubleValue = Double(result.keyAnalysis.strength)
+        confidenceProgressView.doubleValue = Double(result.keyAnalysis.strength * 100)  // 转换为百分比
         
+        // 更新和弦进行显示
+        var progressionText = "Essentia 分析完成:\n"
+        progressionText += "BPM: \(String(format: "%.1f", result.rhythmAnalysis.bpm))\n"
+        progressionText += "调性: \(result.keyAnalysis.key) \(result.keyAnalysis.scale)\n"
+        progressionText += "质量: \(String(format: "%.1f", result.overallQuality * 100))%\n"
+        progressionText += "置信度: \(result.keyAnalysis.confidenceLevel)"
+        
+        chordProgressionTextView.string = progressionText
+        
+        // 自动滚动到底部
+        let textLength = chordProgressionTextView.string.count
+        if textLength > 0 {
+            let range = NSMakeRange(textLength - 1, 0)
+            chordProgressionTextView.scrollRangeToVisible(range)
+        }
+        
+        print("✅ UI已更新: BPM=\(result.rhythmAnalysis.bpm), Key=\(result.keyAnalysis.key) \(result.keyAnalysis.scale)")
+    }
+    
+    /// 显示Essentia分析结果的详细信息（延迟显示）
+    private func displayEssentiaResultDetails(_ result: EssentiaAnalysisResult, fileName: String) {
         // 构建详细信息
         let message = """
         🎵 Essentia 专业分析结果

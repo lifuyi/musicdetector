@@ -92,10 +92,10 @@ class MusicAnalysisEngine {
     private var useHybridAnalysis = true
     private var essentiaResultCache: [String: EssentiaAnalysisResult] = [:]
     
-    // 分析参数 - 极低的阈值确保能检测到结果
-    private let keyConfidenceThreshold: Float = 0.001  // 从0.01降到0.001，几乎无门槛
-    private let chordConfidenceThreshold: Float = 0.1  // 从0.2降到0.1
-    private let beatHistorySize = 50
+    // 分析参数 - 优化阈值平衡响应速度和准确性
+    private let keyConfidenceThreshold: Float = 0.05  // 从0.001提高到0.05，确保有意义的结果
+    private let chordConfidenceThreshold: Float = 0.15  // 从0.1提高到0.15
+    private let beatHistorySize = 30  // 从50减少到30，更快响应
     
     // 历史数据
     private var featureHistory: [AudioFeatures] = []
@@ -103,15 +103,15 @@ class MusicAnalysisEngine {
     private var currentKey: MusicKey?
     private var chordHistory: [ChordDetection] = []
     
-    // 节拍检测 - 改进版本
+    // 节拍检测 - 改进版本，更快响应
     private var lastBeatTime: Double = 0
-    private var bpmEstimate: Float = 0  // 初始为0，表示未检测到
+    private var bpmEstimate: Float = 120  // 默认BPM，避免显示0
     private var beatPhase: Float = 0
     private var onsetStrengths: [Float] = []
     private var tempoBins: [Float] = Array(repeating: 0, count: 200) // 60-260 BPM
     private var beatTracker: BeatTracker = BeatTracker()
     private var hasValidBPM: Bool = false
-    private let minOnsetCount = 10  // 从20降到10，更快检测
+    private let minOnsetCount = 3  // 从10降到3，极快响应
     
     func analyze(_ features: AudioFeatures) -> MusicAnalysisResult {
         return analyzeHybrid(features, audioFileURL: nil)
@@ -175,7 +175,7 @@ class MusicAnalysisEngine {
         return localResult
     }
     
-    // MARK: - 节拍分析 - 改进版本
+    // MARK: - 节拍分析 - 超快响应版本
     private func analyzeBeat(_ features: AudioFeatures) -> BeatInfo {
         let currentTime = features.timestamp.timeIntervalSince1970
         
@@ -184,20 +184,20 @@ class MusicAnalysisEngine {
         onsetStrengths.append(onsetStrength)
         
         // 保持合理的历史长度
-        if onsetStrengths.count > 100 {  // 从200降低到100
+        if onsetStrengths.count > 50 {  // 从100降低到50
             onsetStrengths.removeFirst()
         }
         
         print("📊 Onset detection: \(onsetStrengths.count)/3 samples, current strength: \(String(format: "%.3f", onsetStrength))")
         
-        // 需要足够的数据进行分析 - 大幅降低要求
-        guard onsetStrengths.count >= 3 else {  // 从10降到3，更快检测
-            print("⏳ Waiting for more onset data (current: \(onsetStrengths.count)/3)...")
+        // 立即开始分析，即使数据较少
+        guard onsetStrengths.count >= 3 else {
+            print("⏳ Initializing beat detection (current: \(onsetStrengths.count)/3)...")
             return BeatInfo(
-                bpm: hasValidBPM ? bpmEstimate : 0,  // 如果没有有效BPM，返回0而不是默认值
+                bpm: bpmEstimate,  // 使用当前估计值，避免显示0
                 timeSignature: TimeSignature(numerator: 4, denominator: 4),
-                confidence: 0.0,
-                beatPosition: 0.0,
+                confidence: 0.1,  // 给予小置信度，避免完全空白
+                beatPosition: beatPhase,
                 measurePosition: 1
             )
         }
@@ -207,19 +207,16 @@ class MusicAnalysisEngine {
         
         print("🎯 Beat tracking result: BPM=\(beatInfo.bpm), Confidence=\(String(format: "%.2f", beatInfo.confidence))")
         
-        // 更新内部状态 - 只在检测到有效BPM时更新 - 大幅降低置信度要求
-        if beatInfo.bpm > 0 && beatInfo.confidence > 0.005 {  // 从0.02降到0.005
+        // 更新内部状态 - 更快接受结果
+        if beatInfo.bpm > 0 && beatInfo.confidence > 0.01 {  // 从0.005提高到0.01，更稳定
             bpmEstimate = beatInfo.bpm
             hasValidBPM = true
             print("✅ BPM updated: \(bpmEstimate)")
-        } else {
-            print("❌ BPM detection failed - confidence: \(beatInfo.confidence), threshold: 0.005")
-            // 即使置信度低也暂时接受，避免一直显示检测中
-            if beatInfo.bpm > 0 {
-                bpmEstimate = beatInfo.bpm
-                hasValidBPM = true
-                print("⚠️ BPM accepted with low confidence: \(bpmEstimate)")
-            }
+        } else if beatInfo.bpm > 0 && onsetStrengths.count > 10 {
+            // 数据足够多时，即使置信度稍低也接受
+            bpmEstimate = beatInfo.bpm
+            hasValidBPM = true
+            print("⚠️ BPM accepted with sufficient data: \(bpmEstimate)")
         }
         beatPhase = beatInfo.beatPosition
         
@@ -265,24 +262,24 @@ class MusicAnalysisEngine {
         return max(0, totalOnset - adaptiveThreshold)
     }
     
-    // MARK: - 调式分析 - 改进版本
+    // MARK: - 调式分析 - 超快响应版本
     private func analyzeKey() -> MusicKey? {
-        guard featureHistory.count >= 1 else {  // 从3降到1，只要有1个样本就开始检测
+        guard featureHistory.count >= 1 else {
             print("🎵 Key detection: waiting for feature data (current: \(featureHistory.count))")
             return nil
         }
         
         print("🎵 Starting key detection with \(featureHistory.count) feature samples")
         
-        // 使用更长的历史和加权平均 - 添加边界检查
-        let recentFeatureCount = min(40, featureHistory.count)
+        // 使用更快的分析策略 - 少量数据即可开始
+        let recentFeatureCount = min(20, featureHistory.count)  // 从40减少到20
         let recentFeatures = featureHistory.suffix(recentFeatureCount)
         var weightedChroma = Array(repeating: Float(0.0), count: 12)
         var totalWeight: Float = 0
         
-        // 使用时间衰减权重
+        // 简化权重计算
         for (index, features) in recentFeatures.enumerated() {
-            let weight = Float(index + 1) / Float(recentFeatures.count) // 越新的权重越大
+            let weight = Float(index + 1) / Float(recentFeatures.count)
             for i in 0..<12 {
                 weightedChroma[i] += features.chroma[i] * weight
             }
@@ -296,12 +293,12 @@ class MusicAnalysisEngine {
             }
         }
         
-        // 改进的Krumhansl-Schmuckler算法
+        // 快速调式检测算法
         var keyScores: [(root: Int, mode: KeyMode, score: Float)] = []
         
         for root in 0..<12 {
             for mode in KeyMode.allCases {
-                let score = calculateImprovedKeyScore(chroma: weightedChroma, root: root, mode: mode)
+                let score = calculateFastKeyScore(chroma: weightedChroma, root: root, mode: mode)
                 keyScores.append((root: root, mode: mode, score: score))
             }
         }
@@ -314,25 +311,22 @@ class MusicAnalysisEngine {
         guard let best = keyScores.first, best.score >= keyConfidenceThreshold else {
             let failedScore = keyScores.first?.score ?? 0
             print("🎵 Key detection failed: score \(String(format: "%.4f", failedScore)) < threshold \(keyConfidenceThreshold)")
+            
+            // 数据足够多时，即使置信度稍低也返回结果
+            if featureHistory.count > 15, let fallbackBest = keyScores.first, fallbackBest.score > keyConfidenceThreshold * 0.5 {
+                print("🎵 Key detection: accepting lower confidence with sufficient data")
+                return MusicKey(root: fallbackBest.root, mode: fallbackBest.mode, confidence: fallbackBest.score * 0.8)
+            }
             return nil
         }
         
-        // 检查稳定性：最佳结果应该明显优于第二好的 - 移除稳定性要求
-        if keyScores.count > 1 {
-            let stabilityRatio = best.score / keyScores[1].score
-            print("🎵 Key stability ratio: \(String(format: "%.2f", stabilityRatio))")
-        }
-        
-        // 移除稳定性检查，让任何通过阈值的结果都能显示
-        // if stabilityRatio < 1.02 { return nil }
-        
         print("🎵 Key detection successful: \(noteNames[best.root])\(best.mode.rawValue) (confidence: \(best.score))")
         
-        // 与历史调式比较，避免频繁变化（放宽条件）
+        // 简化稳定性检查
         if let currentKey = currentKey {
             let stability = calculateKeyStability(newKey: (best.root, best.mode), 
                                                 oldKey: (currentKey.root, currentKey.mode))
-            if stability < 0.5 && best.score < keyConfidenceThreshold * 3 {
+            if stability < 0.3 && best.score < keyConfidenceThreshold * 2 {
                 return currentKey // 保持当前调式
             }
         }
@@ -363,6 +357,29 @@ class MusicAnalysisEngine {
         let tonalBonus = (tonicStrength + dominantStrength * 0.7) * 0.3
         
         return normalizedCorrelation + tonalBonus
+    }
+    
+    /// 快速调式评分算法
+    private func calculateFastKeyScore(chroma: [Float], root: Int, mode: KeyMode) -> Float {
+        let profile = mode.enhancedProfile
+        
+        // 简化的相关性计算
+        var correlation: Float = 0
+        var profileSum: Float = 0
+        
+        for i in 0..<12 {
+            let rotatedIndex = (i + root) % 12
+            correlation += chroma[i] * profile[rotatedIndex]
+            profileSum += profile[rotatedIndex]
+        }
+        
+        // 归一化
+        let normalizedCorrelation = profileSum > 0 ? correlation / profileSum : 0
+        
+        // 主音强度奖励
+        let tonicBonus = chroma[root] * 0.2
+        
+        return normalizedCorrelation + tonicBonus
     }
     
     private func calculateKeyStability(newKey: (Int, KeyMode), oldKey: (Int, KeyMode)) -> Float {
@@ -611,28 +628,33 @@ class MusicAnalysisEngine {
         }
         return (essentiaAvailable, essentiaResultCache.count, lastResultInfo)
     }
+    
+    /// 检查 Essentia 是否可用（快速检查）
+    func isEssentiaAvailable() -> Bool {
+        return essentiaAvailable
+    }
 }
 
 // MARK: - 辅助常量
 // MARK: - Beat Tracker类
 class BeatTracker {
     private var beatTimes: [Double] = []
-    private var tempoEstimate: Float = 0  // 初始为0
-    private var confidence: Float = 0
+    private var tempoEstimate: Float = 120  // 默认BPM
+    private var confidence: Float = 0.1  // 初始小置信度
     private var phase: Float = 0
     private let minTempo: Float = 60
     private let maxTempo: Float = 200
-    private var hasValidTempo: Bool = false
+    private var hasValidTempo: Bool = true  // 默认有有效tempo
     
     func track(onsetStrengths: [Float], currentTime: Double) -> BeatInfo {
         // 使用autocorrelation找tempo
         let tempo = estimateTempo(onsetStrengths: onsetStrengths)
         
-        // 只在检测到有效tempo时更新估计值
+        // 更快更新tempo估计
         if tempo > 0 {
             if hasValidTempo {
-                // 平滑tempo估计 - 降低平滑因子，让BPM更快响应变化
-                tempoEstimate = tempoEstimate * 0.7 + tempo * 0.3
+                // 更快的响应 - 减少平滑
+                tempoEstimate = tempoEstimate * 0.5 + tempo * 0.5
             } else {
                 tempoEstimate = tempo
                 hasValidTempo = true
@@ -653,7 +675,7 @@ class BeatTracker {
         let measurePosition = Int((currentTime / beatPeriod).truncatingRemainder(dividingBy: 4)) + 1
         
         return BeatInfo(
-            bpm: hasValidTempo ? tempoEstimate : 0,
+            bpm: tempoEstimate,  // 始终返回当前估计值
             timeSignature: TimeSignature(numerator: 4, denominator: 4),
             confidence: confidence,
             beatPosition: phase,
@@ -662,44 +684,45 @@ class BeatTracker {
     }
     
     private func estimateTempo(onsetStrengths: [Float]) -> Float {
-        let windowSize = min(onsetStrengths.count, 50)  // 从100降低到50
+        let windowSize = min(onsetStrengths.count, 30)  // 从50降低到30
         let recentOnsets = Array(onsetStrengths.suffix(windowSize))
         
-        guard recentOnsets.count > 3 else {  // 从5降到3，让检测更快开始
+        guard recentOnsets.count >= 3 else {  // 保持3个样本的最小要求
             print("⏳ Waiting for more onset data for tempo detection (current: \(recentOnsets.count))...")
             return 0  // 数据不足，返回0
         }
         
-        // Autocorrelation for tempo estimation - 添加边界检查
+        // 更快的Autocorrelation for tempo estimation
         var maxCorrelation: Float = 0
         var bestTempo: Float = 0
-        let sampleRate = 44100.0 / 1024.0 // onset rate 定义在这里
+        let sampleRate = 44100.0 / 1024.0
         
         print("🎵 Tempo estimation: data count=\(recentOnsets.count), min tempo=\(minTempo), max tempo=\(maxTempo)")
         
         // 计算合理的tempo范围
         let minTempoSamples = Int(sampleRate * 60 / Double(maxTempo))
         let maxTempoSamples = Int(sampleRate * 60 / Double(minTempo))
-        let safeMaxSamples = min(maxTempoSamples, recentOnsets.count - 1)  // 确保不越界
+        let safeMaxSamples = min(maxTempoSamples, recentOnsets.count - 1)
         
         print("🎵 Tempo samples range: min=\(minTempoSamples), max=\(maxTempoSamples), safe max=\(safeMaxSamples)")
         
-        // 确保范围有效：minTempoSamples必须小于等于safeMaxSamples
         guard minTempoSamples <= safeMaxSamples else {
-            print("⚠️ Invalid tempo range: min=\(minTempoSamples), max=\(safeMaxSamples), data count=\(recentOnsets.count)")
-            return 0  // 数据不足以进行tempo检测
+            print("⚠️ Invalid tempo range: min=\(minTempoSamples), max=\(safeMaxSamples)")
+            return 0
         }
         
-        // 测试不同的tempo（以samples为单位的间隔）
-        for tempoSamples in minTempoSamples...safeMaxSamples {
+        // 更快的tempo搜索 - 减少迭代次数
+        let stepSize = max(1, (safeMaxSamples - minTempoSamples) / 20)  // 最多20个测试点
+        for tempoSamples in stride(from: minTempoSamples, to: safeMaxSamples, by: stepSize) {
             var correlation: Float = 0
             var count = 0
             
-            // 确保有足够的重叠样本
             let maxI = recentOnsets.count - tempoSamples
             guard maxI > 0 else { continue }
             
-            for i in 0..<maxI {
+            // 更快的计算 - 减少样本数量
+            let sampleCount = min(maxI, 10)  // 最多使用10个样本
+            for i in stride(from: 0, to: sampleCount, by: max(1, sampleCount / 5)) {
                 correlation += recentOnsets[i] * recentOnsets[i + tempoSamples]
                 count += 1
             }
@@ -713,8 +736,8 @@ class BeatTracker {
             }
         }
         
-        // 只有相关性足够高时才返回结果 - 降低阈值
-        return maxCorrelation > 0.05 ? bestTempo : 0  // 从0.1降到0.05
+        // 降低阈值，更快接受结果
+        return maxCorrelation > 0.03 ? bestTempo : 0  // 从0.05降低到0.03
     }
     
     private func findBeats(onsetStrengths: [Float], tempo: Float) -> [Int] {
