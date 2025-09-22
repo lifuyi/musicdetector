@@ -227,25 +227,43 @@ class MusicAnalysisEngine {
         guard featureHistory.count > 0 else { return 0 }
         
         let current = features.magnitude
-        let previous = featureHistory.last!.magnitude
+        guard let previousFeatures = featureHistory.last else {
+            print("⚠️ No previous features available in calculateOnsetStrength")
+            return 0
+        }
+        let previous = previousFeatures.magnitude
         
-        // 计算谱通量（spectral flux）
+        // 边界检查
+        guard current.count > 0 && previous.count > 0 else {
+            print("⚠️ Empty magnitude arrays in calculateOnsetStrength")
+            return 0
+        }
+        
+        // 计算谱通量（spectral flux） - 添加边界检查
         var spectralFlux: Float = 0
-        for i in 0..<min(current.count, previous.count) {
+        let safeCount = min(current.count, previous.count)
+        for i in 0..<safeCount {
             let diff = current[i] - previous[i]
             if diff > 0 {
                 spectralFlux += diff
             }
         }
         
-        // 高频增强（检测瞬态更敏感）
+        // 高频增强（检测瞬态更敏感） - 添加边界检查
         var highFreqFlux: Float = 0
         let highFreqStart = current.count / 4
-        for i in highFreqStart..<min(current.count, previous.count) {
-            let diff = current[i] - previous[i]
-            if diff > 0 {
-                highFreqFlux += diff * 2.0 // 高频权重加倍
+        let highFreqEnd = min(current.count, previous.count)
+        
+        // 只有在有效范围内才进行高频计算
+        if highFreqStart < highFreqEnd {
+            for i in highFreqStart..<highFreqEnd {
+                let diff = current[i] - previous[i]
+                if diff > 0 {
+                    highFreqFlux += diff * 2.0 // 高频权重加倍
+                }
             }
+        } else {
+            print("⚠️ Invalid high frequency range: start=\(highFreqStart), end=\(highFreqEnd)")
         }
         
         // 综合onset强度
@@ -277,9 +295,14 @@ class MusicAnalysisEngine {
         var weightedChroma = Array(repeating: Float(0.0), count: 12)
         var totalWeight: Float = 0
         
-        // 简化权重计算
+        // 简化权重计算 - 添加边界检查
         for (index, features) in recentFeatures.enumerated() {
             let weight = Float(index + 1) / Float(recentFeatures.count)
+            // 确保chroma数组有足够的数据
+            guard features.chroma.count >= 12 else {
+                print("⚠️ Chroma array too small: \(features.chroma.count), expected >= 12")
+                continue
+            }
             for i in 0..<12 {
                 weightedChroma[i] += features.chroma[i] * weight
             }
@@ -361,6 +384,12 @@ class MusicAnalysisEngine {
     
     /// 快速调式评分算法
     private func calculateFastKeyScore(chroma: [Float], root: Int, mode: KeyMode) -> Float {
+        // 边界检查
+        guard root >= 0 && root < 12 && chroma.count >= 12 else {
+            print("⚠️ Invalid parameters in calculateFastKeyScore: root=\(root), chroma.count=\(chroma.count)")
+            return 0
+        }
+        
         let profile = mode.enhancedProfile
         
         // 简化的相关性计算
@@ -376,8 +405,8 @@ class MusicAnalysisEngine {
         // 归一化
         let normalizedCorrelation = profileSum > 0 ? correlation / profileSum : 0
         
-        // 主音强度奖励
-        let tonicBonus = chroma[root] * 0.2
+        // 主音强度奖励 - 安全的数组访问
+        let tonicBonus = (root < chroma.count) ? (chroma[root] * 0.2) : 0
         
         return normalizedCorrelation + tonicBonus
     }
@@ -711,18 +740,27 @@ class BeatTracker {
             return 0
         }
         
-        // 更快的tempo搜索 - 减少迭代次数
+        // 安全的tempo搜索 - 添加更多边界检查
         let stepSize = max(1, (safeMaxSamples - minTempoSamples) / 20)  // 最多20个测试点
         for tempoSamples in stride(from: minTempoSamples, to: safeMaxSamples, by: stepSize) {
             var correlation: Float = 0
             var count = 0
             
+            // 确保有足够的空间进行相关性计算
+            guard tempoSamples < recentOnsets.count else { continue }
             let maxI = recentOnsets.count - tempoSamples
             guard maxI > 0 else { continue }
             
-            // 更快的计算 - 减少样本数量
+            // 安全的样本计算
             let sampleCount = min(maxI, 10)  // 最多使用10个样本
-            for i in stride(from: 0, to: sampleCount, by: max(1, sampleCount / 5)) {
+            let step = max(1, sampleCount / 5)
+            
+            for i in stride(from: 0, to: sampleCount, by: step) {
+                // 双重检查边界
+                guard i < recentOnsets.count && (i + tempoSamples) < recentOnsets.count else {
+                    print("⚠️ Array bounds check failed: i=\(i), tempoSamples=\(tempoSamples), count=\(recentOnsets.count)")
+                    continue
+                }
                 correlation += recentOnsets[i] * recentOnsets[i + tempoSamples]
                 count += 1
             }
