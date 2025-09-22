@@ -7,6 +7,8 @@
  */
 
 import Foundation
+import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - 数据模型
 
@@ -230,7 +232,7 @@ class EssentiaAPIClient {
             DispatchQueue.main.async {
                 let panel = NSOpenPanel()
                 panel.allowedContentTypes = [
-                    .mp3, .wav, .aiff, .m4a,
+                    .mp3, .wav, .aiff, .mpeg4Audio,
                     UTType(filenameExtension: "flac") ?? .audio
                 ]
                 panel.allowsMultipleSelection = false
@@ -350,7 +352,7 @@ struct HybridAnalysisResult: Codable {
         let recommendation: String
         
         enum CodingKeys: String, CodingKey {
-            case bpmComparison = "bmp_comparison"
+            case bpmComparison = "bpm_comparison"
             case keyComparison = "key_comparison"
             case recommendation
         }
@@ -430,7 +432,7 @@ extension NSOpenPanel {
     static func selectAudioFile() -> URL? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
-            .mp3, .wav, .aiff, .m4a,
+            .mp3, .wav, .aiff, .mpeg4Audio,
             UTType(filenameExtension: "flac") ?? .audio
         ]
         panel.allowsMultipleSelection = false

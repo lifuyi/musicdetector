@@ -4,6 +4,7 @@ Essentia 音频分析器
 """
 
 import os
+import time
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 
@@ -14,7 +15,13 @@ try:
 except ImportError:
     ESSENTIA_AVAILABLE = False
     print("警告: Essentia 未安装，将使用 librosa 作为备选方案")
+
+try:
     import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+    print("警告: librosa 未安装")
 
 
 class EssentiaAnalyzer:
@@ -224,7 +231,7 @@ class EssentiaAnalyzer:
             'analysis_engine': 'essentia',
             'file_path': audio_file_path,
             'overall_quality': overall_quality,
-            'analysis_timestamp': __import__('time').time(),
+            'analysis_timestamp': time.time(),
             'recommended_use': self._get_usage_recommendation(overall_quality)
         }
     
@@ -330,6 +337,12 @@ class EssentiaAnalyzer:
     
     def _fallback_bpm_analysis(self, audio_file_path: str) -> Dict:
         """备选 BPM 分析（使用 librosa）"""
+        if not LIBROSA_AVAILABLE:
+            return {
+                'bpm': 120.0,  # 默认 BPM
+                'error': 'librosa not available',
+                'analysis_engine': 'fallback_unavailable'
+            }
         try:
             y, sr = librosa.load(audio_file_path)
             tempo, beats = librosa.beat.beat_track(y=y, sr=sr)

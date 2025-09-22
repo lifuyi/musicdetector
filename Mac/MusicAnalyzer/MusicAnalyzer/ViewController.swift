@@ -242,7 +242,7 @@ class ViewController: NSViewController {
     
     private func presentEssentiaAnalysisPicker() {
         let openPanel = NSOpenPanel()
-        openPanel.allowedContentTypes = [.mp3, .wav, .aiff, .m4a, 
+        openPanel.allowedContentTypes = [.mp3, .wav, .aiff, .mpeg4Audio, 
                                        UTType(filenameExtension: "flac") ?? .audio]
         openPanel.allowsMultipleSelection = false
         openPanel.canChooseDirectories = false

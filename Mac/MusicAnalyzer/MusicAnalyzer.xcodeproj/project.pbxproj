@@ -12,6 +12,7 @@
 		1A1234567890ABCDEF01234B /* AudioInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF01234C /* AudioInputManager.swift */; };
 		1A1234567890ABCDEF01234D /* AudioProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF01234E /* AudioProcessor.swift */; };
 		1A1234567890ABCDEF01234F /* MusicAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF012350 /* MusicAnalysisEngine.swift */; };
+		1A1234567890ABCDEF012356 /* EssentiaAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF012357 /* EssentiaAPIClient.swift */; };
 		1A1234567890ABCDEF012351 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF012352 /* Main.storyboard */; };
 		1A1234567890ABCDEF012354 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1234567890ABCDEF012355 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -23,6 +24,7 @@
 		1A1234567890ABCDEF01234C /* AudioInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputManager.swift; sourceTree = "<group>"; };
 		1A1234567890ABCDEF01234E /* AudioProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioProcessor.swift; sourceTree = "<group>"; };
 		1A1234567890ABCDEF012350 /* MusicAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAnalysisEngine.swift; sourceTree = "<group>"; };
+		1A1234567890ABCDEF012357 /* EssentiaAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentiaAPIClient.swift; sourceTree = "<group>"; };
 		1A1234567890ABCDEF012353 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		1A1234567890ABCDEF012355 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A1234567890ABCDEF012359 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 				1A1234567890ABCDEF01234C /* AudioInputManager.swift */,
 				1A1234567890ABCDEF01234E /* AudioProcessor.swift */,
 				1A1234567890ABCDEF012350 /* MusicAnalysisEngine.swift */,
+				1A1234567890ABCDEF012357 /* EssentiaAPIClient.swift */,
 				1A1234567890ABCDEF012352 /* Main.storyboard */,
 				1A1234567890ABCDEF012355 /* Assets.xcassets */,
 				1A1234567890ABCDEF012359 /* Info.plist */,
@@ -144,6 +147,7 @@
 				1A1234567890ABCDEF01234B /* AudioInputManager.swift in Sources */,
 				1A1234567890ABCDEF01234D /* AudioProcessor.swift in Sources */,
 				1A1234567890ABCDEF01234F /* MusicAnalysisEngine.swift in Sources */,
+				1A1234567890ABCDEF012356 /* EssentiaAPIClient.swift in Sources */,
 				1A1234567890ABCDEF012345 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
