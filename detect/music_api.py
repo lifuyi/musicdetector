@@ -1,4 +1,8 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from essentia_analyzer import EssentiaAnalyzer, ESSENTIA_AVAILABLE
+
+# 添加缺失的常量
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -280,6 +284,178 @@ async def get_active_tasks():
         })
     
     return {"tasks": tasks, "total": len(tasks)}
+
+@app.post("/analyze-essentia")
+async def analyze_with_essentia(file: UploadFile = File(...)):
+    """使用 Essentia 进行高精度音频分析"""
+    if not ESSENTIA_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Essentia 引擎不可用，请检查安装")
+    
+    if not file.filename.lower().endswith(('.mp3', '.wav', '.flac', '.m4a', '.aac')):
+        raise HTTPException(status_code=400, detail="不支持的文件格式。支持: mp3, wav, flac, m4a, aac")
+    
+    # 生成唯一文件名
+    file_id = str(uuid.uuid4())
+    file_extension = os.path.splitext(file.filename)[1]
+    temp_filename = f"{file_id}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, temp_filename)
+    
+    try:
+        # 保存上传的文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 验证文件大小
+        file_size = os.path.getsize(file_path)
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"文件太大，最大支持 {MAX_FILE_SIZE/1024/1024:.1f}MB")
+        
+        # 使用 Essentia 进行分析
+        analyzer = EssentiaAnalyzer()
+        result = analyzer.comprehensive_analysis(file_path)
+        
+        # 添加文件信息
+        result.update({
+            "file_info": {
+                "original_filename": file.filename,
+                "file_size": file_size,
+                "temp_id": file_id
+            },
+            "api_version": "v1",
+            "processing_time": time.time() - result.get('analysis_timestamp', time.time())
+        })
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        # 记录错误
+        print(f"Essentia 分析错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+    
+    finally:
+        # 清理临时文件
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"清理临时文件失败: {e}")
+
+@app.get("/essentia-status")
+async def essentia_status():
+    """检查 Essentia 引擎状态"""
+    return {
+        "essentia_available": ESSENTIA_AVAILABLE,
+        "version": "1.0.0",
+        "supported_formats": ["mp3", "wav", "flac", "m4a", "aac"],
+        "features": [
+            "高精度 BPM 检测",
+            "多算法调性分析", 
+            "节拍位置检测",
+            "音频质量评估"
+        ]
+    }
+
+@app.post("/analyze-hybrid")
+async def analyze_hybrid(file: UploadFile = File(...)):
+    """混合分析：Essentia + 传统算法"""
+    if not file.filename.lower().endswith(('.mp3', '.wav', '.flac', '.m4a', '.aac')):
+        raise HTTPException(status_code=400, detail="不支持的文件格式")
+    
+    file_id = str(uuid.uuid4())
+    file_extension = os.path.splitext(file.filename)[1]
+    temp_filename = f"{file_id}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, temp_filename)
+    
+    try:
+        # 保存文件
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        results = {}
+        
+        # Essentia 分析 (如果可用)
+        if ESSENTIA_AVAILABLE:
+            try:
+                essentia_analyzer = EssentiaAnalyzer()
+                results["essentia"] = essentia_analyzer.comprehensive_analysis(file_path)
+            except Exception as e:
+                results["essentia"] = {"error": str(e)}
+        
+        # 传统 librosa 分析
+        try:
+            from music_analyzer import MusicAnalyzer
+            traditional_analyzer = MusicAnalyzer()
+            traditional_analyzer.load_audio(file_path)
+            
+            # 节拍分析
+            tempo_result = traditional_analyzer.analyze_tempo_and_beats()
+            
+            # 和弦进行分析
+            chord_progression = traditional_analyzer.analyze_chord_progression()
+            
+            results["traditional"] = {
+                "rhythm_analysis": tempo_result,
+                "chord_progression": chord_progression[:10],  # 限制数量
+                "analysis_engine": "librosa"
+            }
+        except Exception as e:
+            results["traditional"] = {"error": str(e)}
+        
+        # 生成比较和推荐
+        comparison = _compare_results(results)
+        
+        return JSONResponse(content={
+            "results": results,
+            "comparison": comparison,
+            "file_info": {
+                "original_filename": file.filename,
+                "temp_id": file_id
+            }
+        })
+        
+    finally:
+        # 清理临时文件
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+
+def _compare_results(results: dict) -> dict:
+    """比较不同算法的分析结果"""
+    comparison = {
+        "bpm_comparison": {},
+        "key_comparison": {},
+        "recommendation": ""
+    }
+    
+    # BPM 比较
+    if "essentia" in results and "traditional" in results:
+        essentia_bpm = results["essentia"].get("rhythm_analysis", {}).get("bpm", 0)
+        traditional_bpm = results["traditional"].get("rhythm_analysis", {}).get("tempo", 0)
+        
+        if essentia_bpm > 0 and traditional_bpm > 0:
+            bpm_diff = abs(essentia_bpm - traditional_bpm)
+            comparison["bpm_comparison"] = {
+                "essentia_bpm": essentia_bpm,
+                "traditional_bpm": traditional_bpm,
+                "difference": bpm_diff,
+                "agreement": "高" if bpm_diff < 5 else "中" if bpm_diff < 15 else "低"
+            }
+        
+        # 推荐
+        if essentia_bpm > 0:
+            essentia_quality = results["essentia"].get("overall_quality", 0)
+            if essentia_quality > 0.6:
+                comparison["recommendation"] = "推荐使用 Essentia 结果（高质量）"
+            elif essentia_quality > 0.3:
+                comparison["recommendation"] = "Essentia 结果较好，建议验证"
+            else:
+                comparison["recommendation"] = "两种算法结果差异较大，建议人工确认"
+        else:
+            comparison["recommendation"] = "使用传统算法结果"
+    
+    return comparison
 
 if __name__ == "__main__":
     import uvicorn
