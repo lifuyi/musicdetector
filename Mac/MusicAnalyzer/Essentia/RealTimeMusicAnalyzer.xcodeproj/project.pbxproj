@@ -21,6 +21,7 @@
 		1A00001A294F1234567890AB /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00001B294F1234567890AB /* ExportView.swift */; };
 		1A00001C294F1234567890AB /* AudioPlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00001D294F1234567890AB /* AudioPlayerManager.swift */; };
 		1A00001E294F1234567890AB /* AudioPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00001F294F1234567890AB /* AudioPlayerView.swift */; };
+		1A000021294F1234567890AB /* KeyAdjustmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000022294F1234567890AB /* KeyAdjustmentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		1A00001B294F1234567890AB /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
 		1A00001D294F1234567890AB /* AudioPlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerManager.swift; sourceTree = "<group>"; };
 		1A00001F294F1234567890AB /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
+		1A000022294F1234567890AB /* KeyAdjustmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyAdjustmentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +91,7 @@
 				1A000015294F1234567890AB /* InputSourceView.swift */,
 				1A00001B294F1234567890AB /* ExportView.swift */,
 				1A00001F294F1234567890AB /* AudioPlayerView.swift */,
+				1A000022294F1234567890AB /* KeyAdjustmentView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -194,6 +197,7 @@
 				1A00001A294F1234567890AB /* ExportView.swift in Sources */,
 				1A00001C294F1234567890AB /* AudioPlayerManager.swift in Sources */,
 				1A00001E294F1234567890AB /* AudioPlayerView.swift in Sources */,
+				1A000021294F1234567890AB /* KeyAdjustmentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

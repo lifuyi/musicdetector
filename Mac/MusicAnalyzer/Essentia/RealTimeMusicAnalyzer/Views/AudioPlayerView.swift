@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import Combine
+
+
 
 struct AudioPlayerView: View {
     @ObservedObject var playerManager: AudioPlayerManager
@@ -103,27 +106,34 @@ struct NoFileHeader: View {
     let onSelectFile: () -> Void
     
     var body: some View {
-        Button(action: onSelectFile) {
-            HStack {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
-                
-                Text("Select Audio File to Play")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "folder")
-                    .font(.title3)
-                    .foregroundColor(.blue)
+        VStack(spacing: 16) {
+            Button(action: onSelectFile) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                    
+                    Text("Select Audio File to Play")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "folder")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(10)
             }
-            .padding()
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(10)
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Upload an audio file to play and analyze in real-time")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -132,6 +142,9 @@ struct NoFileHeader: View {
 struct PlaybackAnalysisDisplay: View {
     let currentResult: MusicAnalysisResult?
     let isPlaying: Bool
+    @State private var isKeyAdjustmentVisible = false
+    @State private var adjustedKey: String = ""
+    @State private var adjustedScale: String = ""
     
     var body: some View {
         VStack(spacing: 12) {
@@ -170,15 +183,52 @@ struct PlaybackAnalysisDisplay: View {
                     Divider()
                         .frame(height: 40)
                     
-                    // Key Display
+                    // Key Display with Confidence
                     VStack(spacing: 4) {
-                        Text("Key")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("\(result.key) \(result.scale)")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
+                        HStack {
+                            Text("Key")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            if result.confidence < 0.7 {
+                                Button(action: { isKeyAdjustmentVisible.toggle() }) {
+                                    Image(systemName: "pencil")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        
+                        HStack {
+                            Text("\(result.key) \(result.scale)")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                            
+                            if result.confidence < 0.7 {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            } else if result.confidence >= 0.9 {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        
+                        // Confidence indicator
+                        HStack {
+                            Text("Confidence:")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.1f%%", result.confidence * 100))
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(confidenceColor(result.confidence))
+                        }
                     }
                     
                     Divider()
@@ -207,6 +257,24 @@ struct PlaybackAnalysisDisplay: View {
                     }
                 }
                 
+                // Key Adjustment Panel
+                if isKeyAdjustmentVisible {
+                    KeyAdjustmentView(
+                        currentKey: result.key,
+                        currentScale: result.scale,
+                        onKeyAdjusted: { newKey, newScale in
+                            adjustedKey = newKey
+                            adjustedScale = newScale
+                            isKeyAdjustmentVisible = false
+                            // In a real implementation, this would update the analysis result
+                        },
+                        onCancel: {
+                            isKeyAdjustmentVisible = false
+                        }
+                    )
+                    .padding(.top, 8)
+                }
+                
                 // Chord Progression Timeline
                 if !result.chords.isEmpty {
                     ChordProgressionView(chords: result.chords)
@@ -226,6 +294,15 @@ struct PlaybackAnalysisDisplay: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.green.opacity(0.3), lineWidth: 1)
         )
+    }
+    
+    private func confidenceColor(_ confidence: Float) -> Color {
+        switch confidence {
+        case 0.9...1.0: return .green
+        case 0.7..<0.9: return .blue
+        case 0.5..<0.7: return .orange
+        default: return .red
+        }
     }
 }
 

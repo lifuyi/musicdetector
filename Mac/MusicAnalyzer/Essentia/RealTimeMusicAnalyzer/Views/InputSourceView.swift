@@ -424,7 +424,9 @@ struct AudioFilePicker: View {
                 panel.allowedContentTypes = [
                     .audio,
                     .mp3,
-                    .wav
+                    .wav,
+                    .aiff,
+                    .mpeg4Audio
                 ]
                 
                 panel.begin { response in
@@ -436,13 +438,18 @@ struct AudioFilePicker: View {
             }
             .buttonStyle(.borderedProminent)
             
-            Text("Supported formats: MP3, WAV, M4A, AAC, FLAC")
+            Text("Supported formats: MP3, WAV, M4A, AAC, FLAC, AIFF")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+            
+            Text("Selected files will be played and analyzed in real-time")
+                .font(.caption)
+                .foregroundColor(.blue)
+                .multilineTextAlignment(.center)
         }
         .padding()
-        .frame(width: 300, height: 200)
+        .frame(width: 300, height: 250)
     }
 }
 
