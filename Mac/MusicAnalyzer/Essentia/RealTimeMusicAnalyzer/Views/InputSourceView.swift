@@ -18,14 +18,12 @@ struct InputSourceView: View {
     enum InputType: String, CaseIterable {
         case microphone = "Microphone"
         case file = "Audio File"
-        case player = "Play & Analyze"
         case url = "URL Stream"
         
         var icon: String {
             switch self {
             case .microphone: return "mic.circle.fill"
             case .file: return "doc.circle.fill"
-            case .player: return "play.circle.fill"
             case .url: return "globe.circle.fill"
             }
         }
@@ -44,7 +42,7 @@ struct InputSourceView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Input Type Selector
+            // Input Type Selector - Three buttons including microphone
             HStack(spacing: 12) {
                 ForEach(InputType.allCases, id: \.self) { inputType in
                     InputTypeButton(
@@ -68,12 +66,6 @@ struct InputSourceView: View {
                 MicrophoneControls(inputManager: inputManager)
             case .file:
                 FileInputControls(inputManager: inputManager, showingFilePicker: $showingFilePicker)
-            case .player:
-                Text("Audio Player with real-time analysis available in main interface")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding()
             case .url:
                 URLInputControls(
                     inputManager: inputManager,
