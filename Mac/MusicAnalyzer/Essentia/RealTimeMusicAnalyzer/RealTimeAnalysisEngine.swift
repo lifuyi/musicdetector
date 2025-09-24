@@ -63,8 +63,11 @@ class RealTimeAnalysisEngine: ObservableObject {
         // Safety check
         guard !buffer.data.isEmpty else { return }
         
-        // DON'T auto-start analysis - only start when explicitly called
-        // This prevents analyzing microphone input or silence
+        // Auto-start analysis when we receive audio data
+        // This ensures microphone input triggers analysis
+        if analysisTimer == nil || !analysisTimer!.isValid {
+            startAnalysis()
+        }
         
         // Add to queue (thread-safe)
         DispatchQueue.main.async {
@@ -85,13 +88,20 @@ class RealTimeAnalysisEngine: ObservableObject {
     }
     
     private func setupAnalysisTimer() {
+        analysisTimer?.invalidate()
         analysisTimer = Timer.scheduledTimer(withTimeInterval: analysisInterval, repeats: true) { [weak self] _ in
             self?.performAnalysis()
         }
+        print("Analysis timer set up with interval: \(self.analysisInterval)s")
     }
     
     private func performAnalysis() {
-        guard !accumulatedAudioData.isEmpty else { return }
+        guard !accumulatedAudioData.isEmpty else { 
+            print("Skipping analysis - no accumulated audio data")
+            return 
+        }
+        
+        print("Performing analysis with \(accumulatedAudioData.count) samples")
         
         // Create temporary audio file for analysis
         let tempURL = createTemporaryAudioFile(from: accumulatedAudioData)
@@ -100,11 +110,15 @@ class RealTimeAnalysisEngine: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
+            print("Calling audio analyzer with temp file: \(tempURL.path)")
             let result = self.audioAnalyzer.analyzeAudioFile(tempURL.path)
+            print("Audio analyzer returned result: \(String(describing: result))")
+            
             let chords = self.detectChords(from: self.accumulatedAudioData)
             
             DispatchQueue.main.async {
                 if let analysisResult = result {
+                    print("Processing analysis result: \(analysisResult.description)")
                     let smoothedResult = self.smoothAnalysisResult(analysisResult)
                     let musicResult = MusicAnalysisResult(
                         bpm: smoothedResult.bpm,
@@ -129,6 +143,9 @@ class RealTimeAnalysisEngine: ObservableObject {
                             self.analysisHistory.removeFirst()
                         }
                     }
+                    print("Analysis result updated successfully")
+                } else {
+                    print("Analysis returned nil result")
                 }
             }
             
@@ -138,14 +155,17 @@ class RealTimeAnalysisEngine: ObservableObject {
     }
     
     private func smoothAnalysisResult(_ result: AudioAnalysisResult) -> AudioAnalysisResult {
-        // Add to recent results
-        recentBPMs.append(result.bpm)
-        recentKeys.append("\(result.key) \(result.scale)")
-        
-        // Keep only recent results
-        if recentBPMs.count > smoothingWindow {
-            recentBPMs.removeFirst()
-            recentKeys.removeFirst()
+        // All modifications to recentBPMs and recentKeys must happen on the main thread
+        DispatchQueue.main.sync {
+            // Add to recent results
+            self.recentBPMs.append(result.bpm)
+            self.recentKeys.append("\(result.key) \(result.scale)")
+            
+            // Keep only recent results
+            if self.recentBPMs.count > self.smoothingWindow {
+                self.recentBPMs.removeFirst()
+                self.recentKeys.removeFirst()
+            }
         }
         
         // Calculate smoothed BPM (median to avoid outliers)
@@ -202,13 +222,21 @@ class RealTimeAnalysisEngine: ObservableObject {
         let tempDir = FileManager.default.temporaryDirectory
         let tempURL = tempDir.appendingPathComponent("tmp_rovodev_analysis_\(UUID().uuidString).wav")
         
+        print("Creating temporary audio file at: \(tempURL.path)")
+        print("Audio data size: \(audioData.count) samples")
+        
         // Create a simple WAV file
         // In a real implementation, you'd use AVAudioFile or similar
         let data = audioData.withUnsafeBufferPointer { buffer in
             Data(buffer: UnsafeBufferPointer(start: buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: buffer.count * 4) { $0 }, count: buffer.count * 4))
         }
         
-        try? data.write(to: tempURL)
+        do {
+            try data.write(to: tempURL)
+            print("Temporary audio file created successfully")
+        } catch {
+            print("Failed to create temporary audio file: \(error)")
+        }
         return tempURL
     }
     

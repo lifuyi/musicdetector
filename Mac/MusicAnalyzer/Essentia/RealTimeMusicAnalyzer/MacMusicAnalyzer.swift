@@ -58,7 +58,8 @@ struct MainView: View {
                 // Input Source Selection
                 InputSourceView(
                     inputManager: inputManager,
-                    analysisEngine: analysisEngine
+                    analysisEngine: analysisEngine,
+                    playerManager: playerManager
                 )
                 
                 // Current Analysis Results

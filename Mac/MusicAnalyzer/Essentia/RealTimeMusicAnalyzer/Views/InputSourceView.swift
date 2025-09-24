@@ -5,10 +5,13 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Foundation
+import AppKit
 
 struct InputSourceView: View {
     @ObservedObject var inputManager: AudioInputManager
     @ObservedObject var analysisEngine: RealTimeAnalysisEngine
+    @ObservedObject var playerManager: AudioPlayerManager
     
     @State private var showingFilePicker = false
     @State private var showingURLInput = false
@@ -91,7 +94,8 @@ struct InputSourceView: View {
         .cornerRadius(12)
         .sheet(isPresented: $showingFilePicker) {
             AudioFilePicker { url in
-                inputManager.processAudioFile(url)
+                // Load and play file through player manager
+                playerManager.loadAndPlayFile(url)
             }
         }
         .sheet(isPresented: $showingURLInput) {
@@ -246,13 +250,64 @@ struct MicrophoneControls: View {
 struct FileInputControls: View {
     @ObservedObject var inputManager: AudioInputManager
     @Binding var showingFilePicker: Bool
+    @State private var isDragging = false
     
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
+            // Upload Area with Drag and Drop
+            VStack(spacing: 12) {
+                Text("Upload Audio File")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Text("Drag and drop your audio file here")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                // Drag and Drop Area
+                Button(action: { showingFilePicker = true }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(isDragging ? Color.blue : Color.secondary.opacity(0.3), lineWidth: 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.secondary.opacity(isDragging ? 0.1 : 0.05))
+                            )
+                            .frame(height: 120)
+                        
+                        VStack(spacing: 8) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.title)
+                                .foregroundColor(.blue)
+                            
+                            Text("Click to browse or drag file here")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .onDrop(of: [.fileURL], isTargeted: $isDragging) { providers in
+                    // Handle dropped files
+                    if let provider = providers.first {
+                        _ = provider.loadFileRepresentation(forTypeIdentifier: UTType.audio.identifier) { url, _ in
+                            if let url = url {
+                                DispatchQueue.main.async {
+                                    inputManager.processAudioFile(url)
+                                }
+                            }
+                        }
+                        return true
+                    }
+                    return false
+                }
+            }
+            
+            // Alternative Button
             Button(action: { showingFilePicker = true }) {
                 HStack {
                     Image(systemName: "folder.circle.fill")
-                    Text("Select Audio File")
+                    Text("Browse Files")
                 }
                 .font(.headline)
                 .foregroundColor(.white)
@@ -267,6 +322,9 @@ struct FileInputControls: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
+        .padding()
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
     }
 }
 
@@ -405,6 +463,9 @@ struct AudioLevelIndicator: View {
 struct AudioFilePicker: View {
     let onFileSelected: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedFileURL: URL?
+    @State private var fileName: String = ""
+    @State private var fileSize: String = ""
     
     var body: some View {
         VStack(spacing: 20) {
@@ -412,40 +473,127 @@ struct AudioFilePicker: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Button("Choose File") {
+            // File Preview Area
+            VStack(spacing: 12) {
+                if selectedFileURL != nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(fileName)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                
+                                Text(fileSize)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(10)
+                    }
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "music.quarternote.3")
+                            .font(.title)
+                            .foregroundColor(.secondary)
+                        
+                        Text("No file selected")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(height: 80)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            
+            Button("Choose Audio File") {
                 let panel = NSOpenPanel()
                 panel.allowsMultipleSelection = false
                 panel.canChooseDirectories = false
                 panel.canChooseFiles = true
                 panel.allowedContentTypes = [
-                    .audio,
-                    .mp3,
-                    .wav,
-                    .aiff,
-                    .mpeg4Audio
+                    UTType.audio,
+                    UTType.mp3,
+                    UTType.wav,
+                    UTType.aiff,
+                    UTType.mpeg4Audio
                 ]
                 
                 panel.begin { response in
                     if response == .OK, let url = panel.url {
-                        onFileSelected(url)
-                        dismiss()
+                        selectedFileURL = url
+                        fileName = url.lastPathComponent
+                        fileSize = formatFileSize(url)
                     }
                 }
             }
             .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
             
             Text("Supported formats: MP3, WAV, M4A, AAC, FLAC, AIFF")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
             
-            Text("Selected files will immediately start playing with real-time analysis")
-                .font(.caption)
-                .foregroundColor(.blue)
-                .multilineTextAlignment(.center)
+            // Action Buttons
+            HStack(spacing: 16) {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                
+                Button("Upload and Play") {
+                    if let url = selectedFileURL {
+                        onFileSelected(url)
+                        dismiss()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedFileURL == nil)
+            }
+            .frame(maxWidth: .infinity)
+            
+            if selectedFileURL != nil {
+                Text("Selected file will immediately start playing with real-time analysis")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding()
-        .frame(width: 300, height: 250)
+        .frame(width: 400, height: 350)
+    }
+    
+    private func formatFileSize(_ url: URL) -> String {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            if let size = attributes[.size] as? NSNumber {
+                let bytes = size.int64Value
+                return formatBytes(bytes)
+            }
+        } catch {
+            print("Error getting file size: \(error)")
+        }
+        return "Unknown size"
+    }
+    
+    private func formatBytes(_ bytes: Int64) -> String {
+        if bytes < 1024 {
+            return "\(bytes) bytes"
+        } else if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(bytes) / 1024.0)
+        } else if bytes < 1024 * 1024 * 1024 {
+            return String(format: "%.1f MB", Double(bytes) / (1024.0 * 1024.0))
+        } else {
+            return String(format: "%.1f GB", Double(bytes) / (1024.0 * 1024.0 * 1024.0))
+        }
     }
 }
 

@@ -50,6 +50,9 @@ class AudioInputManager: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 if !granted {
                     self?.errorMessage = "Microphone access denied. Please enable in System Preferences."
+                    print("❌ Microphone access denied")
+                } else {
+                    print("✅ Microphone access granted")
                 }
             }
         }
@@ -58,21 +61,36 @@ class AudioInputManager: NSObject, ObservableObject {
     // MARK: - Microphone Input
     
     func startMicrophoneInput() {
+        print("🎤 Attempting to start microphone input...")
         stopAllInputs()
         
         do {
+            // Check if we have microphone access
+            let hasAccess = AVCaptureDevice.authorizationStatus(for: .audio)
+            print("🎤 Microphone authorization status: \(hasAccess.rawValue)")
+            
+            if hasAccess == .denied || hasAccess == .restricted {
+                throw AudioInputError.microphoneAccessDenied
+            }
+            
             inputNode = audioEngine.inputNode
             let inputFormat = inputNode?.outputFormat(forBus: 0)
             
+            print("🎤 Input node: \(String(describing: inputNode))")
+            print("🎤 Input format: \(String(describing: inputFormat))")
+            
             guard let format = inputFormat else {
+                print("❌ Failed to get input format")
                 throw AudioInputError.audioEngineError
             }
             
+            print("🎤 Installing tap on input node...")
             // Install tap on input node
             inputNode?.installTap(onBus: 0, bufferSize: bufferSize, format: format) { [weak self] buffer, time in
                 self?.processAudioBuffer(buffer, isRealTime: true)
             }
             
+            print("🎤 Starting audio engine...")
             try audioEngine.start()
             
             DispatchQueue.main.async {
@@ -81,14 +99,32 @@ class AudioInputManager: NSObject, ObservableObject {
                 self.errorMessage = nil
             }
             
-            print("Microphone input started")
+            print("✅ Microphone input started successfully")
             
+        } catch let error as AudioInputError {
+            let errorMessage: String
+            switch error {
+            case .microphoneAccessDenied:
+                errorMessage = "Microphone access denied. Please enable in System Preferences > Security & Privacy > Microphone."
+            case .audioEngineError:
+                errorMessage = "Audio engine configuration error."
+            default:
+                errorMessage = "Failed to start microphone: \(error.localizedDescription)"
+            }
+            
+            DispatchQueue.main.async {
+                self.errorMessage = errorMessage
+                self.currentSource = .none
+                self.isProcessing = false
+            }
+            print("❌ Microphone input error: \(errorMessage)")
         } catch {
             DispatchQueue.main.async {
                 self.errorMessage = "Failed to start microphone: \(error.localizedDescription)"
                 self.currentSource = .none
                 self.isProcessing = false
             }
+            print("❌ Microphone input error: \(error.localizedDescription)")
         }
     }
     
@@ -297,15 +333,23 @@ class AudioInputManager: NSObject, ObservableObject {
     // MARK: - Control Methods
     
     func stopAllInputs() {
+        print("⏹ Stopping all inputs...")
         // Stop microphone
         if audioEngine.isRunning {
+            print("⏹ Stopping audio engine...")
             audioEngine.stop()
             inputNode?.removeTap(onBus: 0)
+            print("⏹ Audio engine stopped")
         }
         
         // Stop audio player
-        audioPlayer?.stop()
-        audioPlayer = nil
+        if let player = audioPlayer {
+            print("⏹ Stopping audio player...")
+            player.stop()
+            audioPlayer = nil
+            print("⏹ Audio player stopped")
+        }
+        
         audioFile = nil
         
         DispatchQueue.main.async {
@@ -313,6 +357,7 @@ class AudioInputManager: NSObject, ObservableObject {
             self.audioLevel = 0.0
             self.downloadProgress = 0.0
         }
+        print("⏹ All inputs stopped")
     }
     
     func pauseProcessing() {
