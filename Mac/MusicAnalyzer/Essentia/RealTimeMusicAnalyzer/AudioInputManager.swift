@@ -267,10 +267,15 @@ class AudioInputManager: NSObject, ObservableObject {
     // MARK: - Audio Processing
     
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, isRealTime: Bool) {
-        guard let floatChannelData = buffer.floatChannelData else { return }
+        guard let floatChannelData = buffer.floatChannelData else { 
+            print("⚠️ No float channel data in audio buffer")
+            return 
+        }
         
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
+        
+        print("🔊 Processing audio buffer: \(frameLength) frames, \(channelCount) channels")
         
         // Calculate audio level (RMS)
         var sum: Float = 0.0
@@ -282,6 +287,7 @@ class AudioInputManager: NSObject, ObservableObject {
         
         DispatchQueue.main.async {
             self.audioLevel = min(rms * 10, 1.0) // Scale and clamp
+            print("📊 Audio level: \(self.audioLevel)")
         }
         
         // Create audio buffer for analysis
@@ -292,6 +298,7 @@ class AudioInputManager: NSObject, ObservableObject {
             timestamp: Date()
         )
         
+        print("📦 Sending audio buffer to analysis engine")
         // Send to analysis engine
         onAudioData?(audioBuffer)
         

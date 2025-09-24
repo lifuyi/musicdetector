@@ -171,29 +171,37 @@ struct MainView: View {
     private func setupInputManager() {
         // Connect input manager to analysis engine
         inputManager.onAudioData = { audioData in
+            print("🔄 Received audio data from input manager, isProcessing: \(self.inputManager.isProcessing)")
             if self.inputManager.isProcessing {
                 self.analysisEngine.processAudioData(audioData)
                 
                 // Start analysis engine if not already running
                 if !self.isAnalyzing {
+                    print("▶️ Starting analysis engine")
                     self.analysisEngine.startAnalysis()
                     self.analysisStartTime = Date()
                     self.isAnalyzing = true
                 }
+            } else {
+                print("⏸ Input manager is not processing, skipping analysis")
             }
         }
         
         // Connect audio player to analysis engine
         playerManager.onPlaybackAudioData = { audioData in
+            print("🎵 Received audio data from player manager, isPlaying: \(self.playerManager.isPlaying)")
             if self.playerManager.isPlaying {
                 self.analysisEngine.processAudioData(audioData)
                 
                 // Start analysis engine if not already running
                 if !self.isAnalyzing {
+                    print("▶️ Starting analysis engine for player")
                     self.analysisEngine.startAnalysis()
                     self.analysisStartTime = Date()
                     self.isAnalyzing = true
                 }
+            } else {
+                print("⏸ Player manager is not playing, skipping analysis")
             }
         }
         

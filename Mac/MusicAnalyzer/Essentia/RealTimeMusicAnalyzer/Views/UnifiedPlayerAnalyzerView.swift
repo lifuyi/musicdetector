@@ -60,6 +60,9 @@ struct UnifiedPlayerAnalyzerView: View {
             AudioFilePicker { url in
                 // Load and start playing the file first
                 print("📂 File selected: \(url.lastPathComponent)")
+                print("📂 File path: \(url.path)")
+                print("📂 File exists: \(FileManager.default.fileExists(atPath: url.path))")
+                
                 playerManager.loadAndPlayFile(url)
                 
                 // Start analysis after a short delay to ensure playback is started
@@ -67,6 +70,11 @@ struct UnifiedPlayerAnalyzerView: View {
                     if playerManager.isPlaying {
                         print("🔥 Starting analysis for uploaded file")
                         analysisEngine.startAnalysis()
+                    } else {
+                        print("⚠️ Playback not started, checking for errors...")
+                        if let errorMessage = playerManager.errorMessage {
+                            print("❌ Playback error: \(errorMessage)")
+                        }
                     }
                 }
             }

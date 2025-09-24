@@ -16,12 +16,14 @@ struct ContentView: View {
         case player = "Player & Analyzer"
         case microphone = "Microphone"
         case export = "Export"
+        case settings = "Settings"
         
         var icon: String {
             switch self {
             case .player: return "play.circle.fill"
             case .microphone: return "mic.circle.fill"
             case .export: return "square.and.arrow.up.circle.fill"
+            case .settings: return "gear.circle.fill"
             }
         }
     }
@@ -53,6 +55,13 @@ struct ContentView: View {
                     // Export Tab
                     ExportView()
                         .tag(TabType.export)
+                    
+                    // Settings Tab
+                    SettingsView(
+                        inputManager: inputManager,
+                        analysisEngine: analysisEngine
+                    )
+                    .tag(TabType.settings)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             }

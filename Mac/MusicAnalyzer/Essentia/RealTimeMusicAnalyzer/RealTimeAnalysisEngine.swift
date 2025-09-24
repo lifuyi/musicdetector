@@ -61,11 +61,17 @@ class RealTimeAnalysisEngine: ObservableObject {
     
     func processAudioData(_ buffer: AudioBuffer) {
         // Safety check
-        guard !buffer.data.isEmpty else { return }
+        guard !buffer.data.isEmpty else { 
+            print("⚠️ Skipping empty audio buffer")
+            return 
+        }
+        
+        print("🔊 Received audio buffer with \(buffer.data.count) samples at \(buffer.timestamp)")
         
         // Auto-start analysis when we receive audio data
         // This ensures microphone input triggers analysis
         if analysisTimer == nil || !analysisTimer!.isValid {
+            print("🔄 Auto-starting analysis engine")
             startAnalysis()
         }
         
@@ -74,16 +80,24 @@ class RealTimeAnalysisEngine: ObservableObject {
             self.audioBufferQueue.append(buffer)
             self.accumulatedAudioData.append(contentsOf: buffer.data)
             
+            print("📊 Accumulated audio data now contains \(self.accumulatedAudioData.count) samples")
+            
             // Maintain buffer size (keep last maxAnalysisTime seconds)
             let maxSamples = Int(self.maxAnalysisTime * buffer.sampleRate)
             if self.accumulatedAudioData.count > maxSamples {
                 let excessSamples = self.accumulatedAudioData.count - maxSamples
                 self.accumulatedAudioData.removeFirst(excessSamples)
+                print("🧹 Trimmed accumulated data to \(self.accumulatedAudioData.count) samples")
             }
             
             // Remove old buffers
             let cutoffTime = Date().addingTimeInterval(-self.maxAnalysisTime)
+            let oldCount = self.audioBufferQueue.count
             self.audioBufferQueue.removeAll { $0.timestamp < cutoffTime }
+            let removedCount = oldCount - self.audioBufferQueue.count
+            if removedCount > 0 {
+                print("🗑 Removed \(removedCount) old buffers")
+            }
         }
     }
     
@@ -97,11 +111,11 @@ class RealTimeAnalysisEngine: ObservableObject {
     
     private func performAnalysis() {
         guard !accumulatedAudioData.isEmpty else { 
-            print("Skipping analysis - no accumulated audio data")
+            print("⏭ Skipping analysis - no accumulated audio data")
             return 
         }
         
-        print("Performing analysis with \(accumulatedAudioData.count) samples")
+        print("🔬 Performing analysis with \(accumulatedAudioData.count) samples")
         
         // Create temporary audio file for analysis
         let tempURL = createTemporaryAudioFile(from: accumulatedAudioData)
@@ -110,15 +124,16 @@ class RealTimeAnalysisEngine: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
-            print("Calling audio analyzer with temp file: \(tempURL.path)")
+            print("🚀 Calling audio analyzer with temp file: \(tempURL.path)")
             let result = self.audioAnalyzer.analyzeAudioFile(tempURL.path)
-            print("Audio analyzer returned result: \(String(describing: result))")
+            print("✅ Audio analyzer returned result: \(String(describing: result))")
             
             let chords = self.detectChords(from: self.accumulatedAudioData)
+            print("🎼 Detected \(chords.count) chords")
             
             DispatchQueue.main.async {
                 if let analysisResult = result {
-                    print("Processing analysis result: \(analysisResult.description)")
+                    print("📊 Processing analysis result: \(analysisResult.description)")
                     let smoothedResult = self.smoothAnalysisResult(analysisResult)
                     let musicResult = MusicAnalysisResult(
                         bpm: smoothedResult.bpm,
@@ -143,9 +158,9 @@ class RealTimeAnalysisEngine: ObservableObject {
                             self.analysisHistory.removeFirst()
                         }
                     }
-                    print("Analysis result updated successfully")
+                    print("🎉 Analysis result updated successfully")
                 } else {
-                    print("Analysis returned nil result")
+                    print("❌ Analysis returned nil result")
                 }
             }
             
@@ -195,23 +210,40 @@ class RealTimeAnalysisEngine: ObservableObject {
     }
     
     private func detectChords(from audioData: [Float]) -> [ChordDetection] {
-        // Simplified chord detection algorithm
+        // More realistic chord detection based on audio characteristics
         // In a real implementation, this would use Essentia's chord detection
         var chords: [ChordDetection] = []
         
-        let segmentSize = audioData.count / 4 // Divide into 4 segments
-        let commonChords = ["C", "Dm", "Em", "F", "G", "Am", "Bdim"]
+        // Calculate audio energy to simulate chord changes
+        let segmentSize = max(1, audioData.count / 8) // Divide into 8 segments
+        let sampleRate = 44100.0
         
-        for i in 0..<4 {
-            let chord = commonChords.randomElement() ?? "C"
-            let confidence = Float.random(in: 0.6...0.9)
-            let startTime = Double(i) * (Double(audioData.count) / 4.0) / 44100.0 // Assuming 44.1kHz
+        for i in 0..<8 {
+            let startIndex = i * segmentSize
+            let endIndex = min(startIndex + segmentSize, audioData.count)
+            
+            // Skip if we don't have enough data
+            guard endIndex > startIndex else { continue }
+            
+            // Calculate energy for this segment
+            let segment = Array(audioData[startIndex..<endIndex])
+            let energy = segment.reduce(0.0) { $0 + Double($1 * $1) } / Double(segment.count)
+            
+            // Determine chord based on energy (simplified simulation)
+            let commonChords = ["C", "Dm", "Em", "F", "G", "Am", "Bdim"]
+            let chordIndex = Int(energy * Double(commonChords.count)) % commonChords.count
+            let chord = commonChords[chordIndex]
+            
+            // Confidence based on energy stability
+            let confidence = min(0.95, 0.3 + Float(energy) * 0.7)
+            let startTime = Double(startIndex) / sampleRate
+            let duration = Double(endIndex - startIndex) / sampleRate
             
             chords.append(ChordDetection(
                 chord: chord,
                 confidence: confidence,
                 startTime: startTime,
-                duration: Double(segmentSize) / 44100.0
+                duration: duration
             ))
         }
         
@@ -225,17 +257,43 @@ class RealTimeAnalysisEngine: ObservableObject {
         print("Creating temporary audio file at: \(tempURL.path)")
         print("Audio data size: \(audioData.count) samples")
         
-        // Create a simple WAV file
-        // In a real implementation, you'd use AVAudioFile or similar
-        let data = audioData.withUnsafeBufferPointer { buffer in
-            Data(buffer: UnsafeBufferPointer(start: buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: buffer.count * 4) { $0 }, count: buffer.count * 4))
+        // Create a proper WAV file with header
+        let sampleRate: UInt32 = 44100
+        let bitDepth: UInt16 = 32
+        let channels: UInt16 = 1
+        let dataSize = audioData.count * MemoryLayout<Float>.size
+        
+        var wavData = Data()
+        
+        // RIFF header
+        wavData.append(contentsOf: "RIFF".utf8)
+        wavData.append(littleEndian: UInt32(36 + dataSize)) // File size
+        wavData.append(contentsOf: "WAVE".utf8)
+        
+        // Format chunk
+        wavData.append(contentsOf: "fmt ".utf8)
+        wavData.append(littleEndian: UInt32(16)) // Chunk size
+        wavData.append(littleEndian: UInt16(3)) // Format (IEEE Float)
+        wavData.append(littleEndian: channels)
+        wavData.append(littleEndian: sampleRate)
+        wavData.append(littleEndian: UInt32(sampleRate * UInt32(channels) * UInt32(bitDepth) / 8)) // Byte rate
+        wavData.append(littleEndian: UInt16(channels * UInt16(bitDepth) / 8)) // Block align
+        wavData.append(littleEndian: bitDepth)
+        
+        // Data chunk
+        wavData.append(contentsOf: "data".utf8)
+        wavData.append(littleEndian: UInt32(dataSize))
+        
+        // Audio data
+        audioData.withUnsafeBytes { buffer in
+            wavData.append(buffer.bindMemory(to: UInt8.self))
         }
         
         do {
-            try data.write(to: tempURL)
-            print("Temporary audio file created successfully")
+            try wavData.write(to: tempURL)
+            print("Temporary WAV file created successfully")
         } catch {
-            print("Failed to create temporary audio file: \(error)")
+            print("Failed to create temporary WAV file: \(error)")
         }
         return tempURL
     }
@@ -281,4 +339,26 @@ enum AnalysisType {
     case realtime
     case file
     case manual
+}
+
+// Extension to add little endian data to Data
+extension Data {
+    mutating func append(littleEndian value: UInt32) {
+        Swift.withUnsafeBytes(of: value.littleEndian) { buffer in
+            append(buffer.bindMemory(to: UInt8.self))
+        }
+    }
+    
+    mutating func append(littleEndian value: UInt16) {
+        Swift.withUnsafeBytes(of: value.littleEndian) { buffer in
+            append(buffer.bindMemory(to: UInt8.self))
+        }
+    }
+    
+    mutating func append(littleEndian value: Float) {
+        let bitPattern = value.bitPattern
+        Swift.withUnsafeBytes(of: bitPattern.littleEndian) { buffer in
+            append(buffer.bindMemory(to: UInt8.self))
+        }
+    }
 }

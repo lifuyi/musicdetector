@@ -54,11 +54,14 @@ public class AudioAnalyzer {
             return nil
         }
         
+        // Ensure confidence is within valid range
+        let confidence = max(0.0, min(1.0, result.confidence))
+        
         return AudioAnalysisResult(
             bpm: result.bpm,
             key: result.key,
             scale: result.scale,
-            confidence: result.confidence
+            confidence: confidence
         )
     }
     

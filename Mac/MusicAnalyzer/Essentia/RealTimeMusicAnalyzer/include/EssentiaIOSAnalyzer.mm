@@ -109,13 +109,42 @@
     }
     
     @try {
-        // 这里调用真实的 Essentia 分析
-        // 暂时返回模拟数据用于测试
-        float bpm = 120.0f + (arc4random_uniform(60) - 30); // 90-150 BPM
-        NSArray *keys = @[@"C", @"D", @"E", @"F", @"G", @"A", @"B"];
-        NSString *key = keys[arc4random_uniform((uint32_t)keys.count)];
-        NSString *scale = (arc4random_uniform(2) == 0) ? @"major" : @"minor";
-        float confidence = 0.7f + (arc4random_uniform(30) / 100.0f); // 0.7-1.0
+        // 检查文件是否存在
+        if (![[NSFileManager defaultManager] fileExistsAtPath:audioFilePath]) {
+            if (error) *error = [self createError:EssentiaErrorFileNotFound message:@"音频文件不存在"];
+            return nil;
+        }
+        
+        // 简单的音频特征分析（模拟 Essentia 的基本功能）
+        // 在实际实现中，这里会调用真正的 Essentia 分析函数
+        float bpm = 120.0f; // 默认 BPM
+        NSString *key = @"C";
+        NSString *scale = @"major";
+        float confidence = 0.8f;
+        
+        // 尝试读取文件以模拟分析
+        NSError *fileError;
+        NSData *audioData = [NSData dataWithContentsOfFile:audioFilePath options:0 error:&fileError];
+        if (audioData && audioData.length > 0) {
+            // 基于文件大小和内容模拟一些分析结果
+            // 这只是一个简单的模拟，实际的 Essentia 会做更复杂的 DSP 分析
+            float dataSizeFactor = fminf(1.0f, (float)audioData.length / 1000000.0f);
+            bpm = 80.0f + (dataSizeFactor * 80.0f); // 80-160 BPM based on file size
+            confidence = 0.5f + (dataSizeFactor * 0.5f); // 0.5-1.0 confidence
+            
+            // 更一致的调性选择，基于文件内容的哈希值
+            NSArray *keys = @[@"C", @"D", @"E", @"F", @"G", @"A", @"B"];
+            NSArray *scales = @[@"major", @"minor"];
+            
+            // 使用文件内容的简单哈希来选择调性，确保一致性
+            NSUInteger hash = audioData.length;
+            for (NSUInteger i = 0; i < MIN(audioData.length, 100); i++) {
+                hash += ((const uint8_t *)[audioData bytes])[i];
+            }
+            
+            key = keys[hash % [keys count]];
+            scale = scales[(hash / [keys count]) % [scales count]];
+        }
         
         return [[EssentiaAnalysisResult alloc] initWithBPM:bpm key:key scale:scale confidence:confidence];
         
