@@ -213,7 +213,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .frame(width: 600, height: 500)
+        .frame(minWidth: 600, idealWidth: 700, maxWidth: 800, minHeight: 600, idealHeight: 700, maxHeight: 900)
         .onAppear {
             loadCurrentSettings()
         }

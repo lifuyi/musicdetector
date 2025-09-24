@@ -29,6 +29,12 @@ class RealTimeAnalysisEngine: ObservableObject {
         setupAnalysisTimer()
     }
     
+    func configure(bufferSize: Int, hopSize: Int, sampleRate: Double) {
+        // Configure analysis parameters
+        // In a real implementation, this would set up Essentia parameters
+        print("Analysis engine configured - Buffer: \(bufferSize), Hop: \(hopSize), Sample Rate: \(sampleRate)")
+    }
+    
     func startAnalysis() {
         audioBufferQueue.removeAll()
         analysisHistory.removeAll()
@@ -54,20 +60,28 @@ class RealTimeAnalysisEngine: ObservableObject {
     }
     
     func processAudioData(_ buffer: AudioBuffer) {
-        // Add to queue
-        audioBufferQueue.append(buffer)
-        accumulatedAudioData.append(contentsOf: buffer.data)
+        // Safety check
+        guard !buffer.data.isEmpty else { return }
         
-        // Maintain buffer size (keep last maxAnalysisTime seconds)
-        let maxSamples = Int(maxAnalysisTime * buffer.sampleRate)
-        if accumulatedAudioData.count > maxSamples {
-            let excessSamples = accumulatedAudioData.count - maxSamples
-            accumulatedAudioData.removeFirst(excessSamples)
+        // DON'T auto-start analysis - only start when explicitly called
+        // This prevents analyzing microphone input or silence
+        
+        // Add to queue (thread-safe)
+        DispatchQueue.main.async {
+            self.audioBufferQueue.append(buffer)
+            self.accumulatedAudioData.append(contentsOf: buffer.data)
+            
+            // Maintain buffer size (keep last maxAnalysisTime seconds)
+            let maxSamples = Int(self.maxAnalysisTime * buffer.sampleRate)
+            if self.accumulatedAudioData.count > maxSamples {
+                let excessSamples = self.accumulatedAudioData.count - maxSamples
+                self.accumulatedAudioData.removeFirst(excessSamples)
+            }
+            
+            // Remove old buffers
+            let cutoffTime = Date().addingTimeInterval(-self.maxAnalysisTime)
+            self.audioBufferQueue.removeAll { $0.timestamp < cutoffTime }
         }
-        
-        // Remove old buffers
-        let cutoffTime = Date().addingTimeInterval(-maxAnalysisTime)
-        audioBufferQueue.removeAll { $0.timestamp < cutoffTime }
     }
     
     private func setupAnalysisTimer() {

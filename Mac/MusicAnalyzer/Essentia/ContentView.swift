@@ -1,256 +1,121 @@
 //
 //  ContentView.swift
-//  主界面
+//  Main interface with unified player and analyzer
 //
 
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selectedFile: URL?
-    @State private var analysisResult: AudioAnalysisResult?
-    @State private var isAnalyzing = false
-    @State private var showingFilePicker = false
+    @StateObject private var playerManager = AudioPlayerManager()
+    @StateObject private var analysisEngine = RealTimeAnalysisEngine()
+    @StateObject private var inputManager = AudioInputManager()
+    
+    @State private var selectedTab: TabType = .player
+    
+    enum TabType: String, CaseIterable {
+        case player = "Player & Analyzer"
+        case microphone = "Microphone"
+        case export = "Export"
+        
+        var icon: String {
+            switch self {
+            case .player: return "play.circle.fill"
+            case .microphone: return "mic.circle.fill"
+            case .export: return "square.and.arrow.up.circle.fill"
+            }
+        }
+    }
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // 标题区域
-                HeaderView()
+            VStack(spacing: 0) {
+                // Tab Selector
+                TabSelectorView(selectedTab: $selectedTab)
                 
-                // 文件选择区域
-                FileSelectionView(
-                    selectedFile: $selectedFile,
-                    showingFilePicker: $showingFilePicker
-                )
+                Divider()
                 
-                // 分析按钮
-                AnalyzeButton(
-                    isAnalyzing: $isAnalyzing,
-                    selectedFile: selectedFile,
-                    onAnalyze: analyzeAudio
-                )
-                
-                // 结果显示
-                if isAnalyzing {
-                    ProgressView("分析中...")
-                        .padding()
-                } else if let result = analysisResult {
-                    ResultsView(result: result)
+                // Tab Content
+                TabView(selection: $selectedTab) {
+                    // Unified Player & Analyzer Tab
+                    UnifiedPlayerAnalyzerView(
+                        playerManager: playerManager,
+                        analysisEngine: analysisEngine
+                    )
+                    .tag(TabType.player)
+                    
+                    // Microphone Input Tab
+                    InputSourceView(
+                        inputManager: inputManager,
+                        analysisEngine: analysisEngine
+                    )
+                    .tag(TabType.microphone)
+                    
+                    // Export Tab
+                    ExportView()
+                        .tag(TabType.export)
                 }
-                
-                Spacer()
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             }
-            .padding()
-            .navigationTitle("Essentia 音频分析")
+            .navigationTitle("Essentia Music Analyzer")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showingFilePicker) {
-                DocumentPicker(selectedURL: $selectedFile)
-            }
+        }
+        .onAppear {
+            setupAnalysisEngine()
         }
     }
     
-    private func analyzeAudio() {
-        guard let fileURL = selectedFile else { return }
-        
-        isAnalyzing = true
-        analysisResult = nil
-        
-        // 异步分析
-        AudioAnalyzer.shared.analyzeAudioFileAsync(at: fileURL) { result in
-            DispatchQueue.main.async {
-                self.analysisResult = result
-                self.isAnalyzing = false
-                
-                if result == nil {
-                    print("分析失败")
-                }
-            }
-        }
+    private func setupAnalysisEngine() {
+        // Configure analysis engine settings
+        analysisEngine.configure(
+            bufferSize: 1024,
+            hopSize: 512,
+            sampleRate: 44100
+        )
     }
 }
 
-// MARK: - 子视图
+// MARK: - Tab Selector View
 
-struct HeaderView: View {
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "waveform")
-                .font(.system(size: 50))
-                .foregroundColor(.blue)
-            
-            Text("Essentia 音频分析")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("BPM 检测 • 调性分析")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .padding(.vertical)
-    }
-}
-
-struct FileSelectionView: View {
-    @Binding var selectedFile: URL?
-    @Binding var showingFilePicker: Bool
+struct TabSelectorView: View {
+    @Binding var selectedTab: ContentView.TabType
     
     var body: some View {
-        VStack(spacing: 12) {
-            if let fileURL = selectedFile {
-                HStack {
-                    Image(systemName: "waveform")
-                        .foregroundColor(.blue)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(fileURL.lastPathComponent)
-                            .font(.headline)
-                            .lineLimit(1)
+        HStack(spacing: 0) {
+            ForEach(ContentView.TabType.allCases, id: \.self) { tab in
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedTab = tab
+                    }
+                }) {
+                    VStack(spacing: 6) {
+                        Image(systemName: tab.icon)
+                            .font(.title2)
+                            .foregroundColor(selectedTab == tab ? .blue : .secondary)
                         
-                        Text(fileURL.path)
+                        Text(tab.rawValue)
                             .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                            .fontWeight(.medium)
+                            .foregroundColor(selectedTab == tab ? .blue : .secondary)
                     }
-                    
-                    Spacer()
-                    
-                    Button(action: { selectedFile = nil }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding()
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(10)
-            } else {
-                Button(action: { showingFilePicker = true }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                        Text("选择音频文件")
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(10)
+                    .padding(.vertical, 12)
+                    .background(
+                        selectedTab == tab ? 
+                        Color.blue.opacity(0.1) : 
+                        Color.clear
+                    )
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
+        .background(Color.secondary.opacity(0.05))
     }
 }
 
-struct AnalyzeButton: View {
-    @Binding var isAnalyzing: Bool
-    let selectedFile: URL?
-    let onAnalyze: () -> Void
-    
-    var body: some View {
-        Button(action: onAnalyze) {
-            if isAnalyzing {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .frame(width: 120, height: 50)
-            } else {
-                Text("开始分析")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(width: 120, height: 50)
-            }
-        }
-        .background(selectedFile != nil ? Color.green : Color.gray)
-        .cornerRadius(25)
-        .disabled(selectedFile == nil || isAnalyzing)
-        .animation(.easeInOut, value: isAnalyzing)
-    }
-}
+// MARK: - Preview
 
-struct ResultsView: View {
-    let result: AudioAnalysisResult
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                Text("分析完成")
-                    .font(.headline)
-            }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                ResultRow(icon: "timer", title: "BPM", value: String(format: "%.1f", result.bpm))
-                ResultRow(icon: "music.note", title: "调性", value: "\(result.key) \(result.scale)")
-                ResultRow(icon: "percent", title: "置信度", value: String(format: "%.1f%%", result.confidence * 100))
-                
-                if !result.isValid {
-                    Label("置信度较低，结果可能不准确", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-            }
-            .padding()
-            .background(Color.secondary.opacity(0.1))
-            .cornerRadius(10)
-        }
-        .padding(.vertical)
-    }
-}
-
-struct ResultRow: View {
-    let icon: String
-    let title: String
-    let value: String
-    
-    var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .frame(width: 20)
-                .foregroundColor(.blue)
-            
-            Text(title)
-                .frame(width: 80, alignment: .leading)
-            
-            Text(value)
-                .fontWeight(.semibold)
-            
-            Spacer()
-        }
-    }
-}
-
-// MARK: - 文件选择器
-
-struct DocumentPicker: UIViewControllerRepresentable {
-    @Binding var selectedURL: URL?
-    @Environment(\.presentationMode) var presentationMode
-    
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.audio])
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let parent: DocumentPicker
-        
-        init(_ parent: DocumentPicker) {
-            self.parent = parent
-        }
-        
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            parent.selectedURL = urls.first
-            parent.presentationMode.wrappedValue.dismiss()
-        }
-        
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            parent.presentationMode.wrappedValue.dismiss()
-        }
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
     }
 }

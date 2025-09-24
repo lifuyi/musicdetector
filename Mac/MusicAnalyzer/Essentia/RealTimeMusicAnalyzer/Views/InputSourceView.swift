@@ -121,6 +121,10 @@ struct InputSourceView: View {
                 print("Analysis result: \(result.description)")
             }
         }
+        
+        // DON'T auto-start microphone input
+        inputManager.stopAllInputs()
+        analysisEngine.stopAnalysis()
     }
 }
 
@@ -435,7 +439,7 @@ struct AudioFilePicker: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
             
-            Text("Selected files will be played and analyzed in real-time")
+            Text("Selected files will immediately start playing with real-time analysis")
                 .font(.caption)
                 .foregroundColor(.blue)
                 .multilineTextAlignment(.center)

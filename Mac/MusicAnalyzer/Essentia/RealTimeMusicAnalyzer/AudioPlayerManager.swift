@@ -7,7 +7,7 @@ import Foundation
 import AVFoundation
 import Combine
 
-class AudioPlayerManager: NSObject, ObservableObject {
+class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var isPlaying = false
     @Published var isPaused = false
     @Published var currentTime: TimeInterval = 0
@@ -16,6 +16,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     @Published var playbackRate: Float = 1.0
     @Published var currentFile: URL?
     @Published var errorMessage: String?
+    @Published var spectrumData: [Float] = Array(repeating: 0, count: 64)
     
     private var audioPlayer: AVAudioPlayer?
     private var playbackTimer: Timer?
@@ -31,63 +32,104 @@ class AudioPlayerManager: NSObject, ObservableObject {
         setupAudioEngine()
     }
     
+    deinit {
+        // Clean up audio engine on dealloc
+        stopPlayback()
+        playerNode.removeTap(onBus: 0)
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        print("🧹 AudioPlayerManager cleaned up")
+    }
+    
     // MARK: - Audio Engine Setup
     
     private func setupAudioEngine() {
+        print("🔧 Setting up audio engine...")
+        
+        // Use a simpler approach with AVAudioPlayer for reliable audio output
+        audioEngine = AVAudioEngine()
+        playerNode = AVAudioPlayerNode()
+        
+        // Attach the player node
         audioEngine.attach(playerNode)
         
+        // Get the output format
         let outputFormat = audioEngine.outputNode.outputFormat(forBus: 0)
-        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: outputFormat)
+        print("📊 Output format: \(outputFormat)")
         
-        // Install tap for real-time analysis during playback
-        audioEngine.mainMixerNode.installTap(onBus: 0, bufferSize: 4096, format: outputFormat) { [weak self] buffer, time in
+        // Connect player directly to output for reliable sound
+        audioEngine.connect(playerNode, to: audioEngine.outputNode, format: nil)
+        
+        // Set volume to maximum to ensure sound
+        audioEngine.mainMixerNode.outputVolume = 1.0
+        
+        // Install tap for analysis on the player node instead of mixer
+        playerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             self?.processPlaybackAudio(buffer)
         }
         
         do {
             try audioEngine.start()
+            print("✅ Audio engine started successfully")
+            print("🔊 Engine running: \(audioEngine.isRunning)")
         } catch {
-            print("Failed to start audio engine: \(error)")
+            print("❌ Failed to start audio engine: \(error)")
         }
     }
     
     // MARK: - File Playback Control
     
     func loadAndPlayFile(_ url: URL) {
+        print("🎵 Loading file: \(url.lastPathComponent)")
         stopPlayback()
         
         do {
-            // Load audio file
-            audioFile = try AVAudioFile(forReading: url)
+            // Use AVAudioPlayer for simpler, more reliable playback
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.delegate = self
+            audioPlayer?.prepareToPlay()
             
-            guard let audioFile = audioFile else {
+            guard let player = audioPlayer else {
+                print("❌ Failed to create AVAudioPlayer")
                 DispatchQueue.main.async {
                     self.errorMessage = "Failed to load audio file"
                 }
                 return
             }
             
+            print("📁 File loaded - Duration: \(player.duration)s")
+            print("📁 File format: \(url.pathExtension)")
+            
             // Update file info
             DispatchQueue.main.async {
                 self.currentFile = url
-                self.duration = Double(audioFile.length) / audioFile.processingFormat.sampleRate
+                self.duration = player.duration
                 self.currentTime = 0
                 self.errorMessage = nil
             }
             
-            // Schedule file for playback
-            playerNode.scheduleFile(audioFile, at: nil) { [weak self] in
+            // Start playback immediately
+            print("▶️ Starting simple playback...")
+            let success = player.play()
+            
+            if success {
+                startPlaybackTimer()
                 DispatchQueue.main.async {
-                    self?.playbackCompleted()
+                    self.isPlaying = true
+                    self.isPaused = false
+                }
+                print("✅ File loaded and playing: \(url.lastPathComponent)")
+                print("📊 Playback status - isPlaying: \(self.isPlaying), isPaused: \(self.isPaused)")
+            } else {
+                print("❌ Failed to start playback")
+                DispatchQueue.main.async {
+                    self.errorMessage = "Failed to start playback"
                 }
             }
             
-            // Start playback
-            startPlayback()
-            
-            print("✅ File loaded and playing: \(url.lastPathComponent)")
-            
         } catch {
+            print("❌ Failed to load file: \(error)")
             DispatchQueue.main.async {
                 self.errorMessage = "Failed to load file: \(error.localizedDescription)"
                 self.currentFile = nil
@@ -96,30 +138,23 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func startPlayback() {
-        guard audioFile != nil else { return }
+        guard let player = audioPlayer else { 
+            print("❌ Cannot start playback: no audio player")
+            return 
+        }
         
-        do {
-            if !audioEngine.isRunning {
-                try audioEngine.start()
-            }
-            
-            playerNode.play()
-            startPlaybackTimer()
-            
-            DispatchQueue.main.async {
-                self.isPlaying = true
-                self.isPaused = false
-            }
-            
-        } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = "Playback failed: \(error.localizedDescription)"
-            }
+        player.play()
+        startPlaybackTimer()
+        
+        DispatchQueue.main.async {
+            self.isPlaying = true
+            self.isPaused = false
+            print("✅ Playback started successfully - isPlaying: \(self.isPlaying)")
         }
     }
     
     func pausePlayback() {
-        playerNode.pause()
+        audioPlayer?.pause()
         stopPlaybackTimer()
         
         DispatchQueue.main.async {
@@ -129,7 +164,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func resumePlayback() {
-        playerNode.play()
+        audioPlayer?.play()
         startPlaybackTimer()
         
         DispatchQueue.main.async {
@@ -139,7 +174,7 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func stopPlayback() {
-        playerNode.stop()
+        audioPlayer?.stop()
         stopPlaybackTimer()
         
         DispatchQueue.main.async {
@@ -149,35 +184,21 @@ class AudioPlayerManager: NSObject, ObservableObject {
         }
     }
     
-    func seekTo(_ time: TimeInterval) {
-        guard let file = audioFile else { return }
-        
-        let wasPlaying = isPlaying
-        stopPlayback()
-        
-        // Calculate frame position
-        let sampleRate = file.processingFormat.sampleRate
-        let framePosition = AVAudioFramePosition(time * sampleRate)
-        
-        // Schedule from new position
-        let remainingFrames = file.length - framePosition
-        if remainingFrames > 0 {
-            playerNode.scheduleSegment(file, 
-                                     startingFrame: framePosition, 
-                                     frameCount: AVAudioFrameCount(remainingFrames), 
-                                     at: nil) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.playbackCompleted()
-                }
-            }
+    // MARK: - AVAudioPlayerDelegate
+    
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        DispatchQueue.main.async {
+            self.playbackCompleted()
         }
+    }
+    
+    func seekTo(_ time: TimeInterval) {
+        guard let player = audioPlayer else { return }
+        
+        player.currentTime = time
         
         DispatchQueue.main.async {
             self.currentTime = time
-        }
-        
-        if wasPlaying {
-            startPlayback()
         }
     }
     
@@ -207,15 +228,10 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     private func updatePlaybackTime() {
-        guard let audioFile = audioFile else { return }
+        guard let player = audioPlayer else { return }
         
-        if let nodeTime = playerNode.lastRenderTime,
-           let playerTime = playerNode.playerTime(forNodeTime: nodeTime) {
-            let currentSeconds = Double(playerTime.sampleTime) / playerTime.sampleRate
-            
-            DispatchQueue.main.async {
-                self.currentTime = currentSeconds
-            }
+        DispatchQueue.main.async {
+            self.currentTime = player.currentTime
         }
     }
     
@@ -230,7 +246,12 @@ class AudioPlayerManager: NSObject, ObservableObject {
     // MARK: - Real-time Analysis During Playback
     
     private func processPlaybackAudio(_ buffer: AVAudioPCMBuffer) {
-        guard let floatChannelData = buffer.floatChannelData else { return }
+        // Safety checks to prevent crashes
+        guard let floatChannelData = buffer.floatChannelData,
+              buffer.frameLength > 0,
+              buffer.format.channelCount > 0 else { 
+            return 
+        }
         
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
@@ -238,16 +259,38 @@ class AudioPlayerManager: NSObject, ObservableObject {
         // Only process if we're actually playing
         guard isPlaying else { return }
         
-        // Create audio buffer for real-time analysis
-        let audioBuffer = AudioBuffer(
-            data: Array(UnsafeBufferPointer(start: floatChannelData[0], count: frameLength)),
-            sampleRate: buffer.format.sampleRate,
-            channels: channelCount,
-            timestamp: Date()
-        )
+        // Safety check for array bounds
+        guard frameLength > 0 else { return }
         
-        // Send to analysis engine for real-time processing
-        onPlaybackAudioData?(audioBuffer)
+        // Check if there's actual audio data (not silence) - sample a few points
+        let samplePoints = min(10, frameLength)
+        let hasAudioData = (0..<samplePoints).contains { i in
+            abs(floatChannelData[0][i]) > 0.001
+        }
+        
+        guard hasAudioData else { return }
+        
+        // Create audio buffer for real-time analysis with safe data copy
+        do {
+            let audioData = Array(UnsafeBufferPointer(start: floatChannelData[0], count: frameLength))
+            let audioBuffer = AudioBuffer(
+                data: audioData,
+                sampleRate: buffer.format.sampleRate,
+                channels: channelCount,
+                timestamp: Date()
+            )
+            
+            // Calculate spectrum for visualization
+            let spectrum = calculateSpectrum(from: audioData)
+            DispatchQueue.main.async {
+                self.spectrumData = spectrum
+            }
+            
+            // Send to analysis engine for real-time processing
+            onPlaybackAudioData?(audioBuffer)
+        } catch {
+            print("❌ Error processing audio buffer: \(error)")
+        }
     }
     
     // MARK: - Utility Methods
@@ -268,6 +311,17 @@ class AudioPlayerManager: NSObject, ObservableObject {
         seekTo(newTime)
     }
     
+    func clearFile() {
+        stopPlayback()
+        audioFile = nil
+        DispatchQueue.main.async {
+            self.currentFile = nil
+            self.duration = 0
+            self.currentTime = 0
+            self.errorMessage = nil
+        }
+    }
+    
     func getFileInfo() -> (name: String, duration: String, format: String)? {
         guard let currentFile = currentFile else { return nil }
         
@@ -285,9 +339,32 @@ class AudioPlayerManager: NSObject, ObservableObject {
     }
     
     func getCurrentSpectrum() -> [Float] {
-        // Implementation for real-time spectrum analysis
-        // This could be used for enhanced visualization
-        return Array(repeating: 0, count: 64)
+        return spectrumData
+    }
+    
+    private func calculateSpectrum(from audioData: [Float]) -> [Float] {
+        let fftSize = 512
+        let spectrumSize = 64
+        
+        // Take a chunk of audio data for FFT
+        let dataChunk = Array(audioData.prefix(fftSize))
+        var spectrum = Array(repeating: Float(0), count: spectrumSize)
+        
+        // Simple magnitude calculation (simplified FFT)
+        for i in 0..<spectrumSize {
+            let binStart = i * (dataChunk.count / spectrumSize)
+            let binEnd = min(binStart + (dataChunk.count / spectrumSize), dataChunk.count)
+            
+            var magnitude: Float = 0
+            for j in binStart..<binEnd {
+                magnitude += abs(dataChunk[j])
+            }
+            
+            spectrum[i] = magnitude / Float(binEnd - binStart)
+            spectrum[i] = min(spectrum[i] * 20, 1.0) // Scale and clamp
+        }
+        
+        return spectrum
     }
     
     func exportCurrentPosition() -> PlaybackState {
